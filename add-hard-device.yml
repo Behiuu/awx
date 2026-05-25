@@ -1,0 +1,96 @@
+---
+- name: Configure storage 
+  hosts: all
+  become: true
+  vars:
+    vg_name: redis
+    lv_name: data
+    mount_point: /var/redis
+    lv_size: 100%FREE
+
+  tasks:
+
+  - name: Ensure lvm is installed on server 
+    ansible.builtin.package:
+      name: lvm2
+      state: present
+
+
+  - name: Detect root device
+    ansible.builtin.set_fact:
+      root_device: >-
+        {{
+        ansible_mounts
+        | selectattr('mount', 'equalto', '/')
+        | map(attribute='device')
+        | first
+        }}
+  - name: Show root device
+    ansible.builtin.debug:
+      msg: "Root device is {{ root_device }}"
+  
+  - name: find unused disk
+    ansible.builtin.set_fact:
+      disk: "/dev/{{ item.key }}"
+    loop: "{{ ansible_devices | dict2items }}"
+    when:
+      - root_device is not search(item.key)
+      - item.value.partitions | length == 0
+      - item.value.removable == "0"
+
+  - name: show detected disk
+    ansible.builtin.debug:
+      msg: "selected disk is {{ disk }}"
+
+
+  - name: Create PV && VG
+    community.general.lvg:
+      pvs: "{{ disk }}"
+      vg: "{{ vg_name }}"
+    register: vg_result
+
+  - name: Ensure vg is exist
+    community.general.lvg:
+      vg: "{{ vg_name }}"
+      pvs: "{{ disk }}"
+  
+  - name: Create LV
+    community.general.lvol:
+      vg: "{{ vg_name }}"
+      lv: "{{ lv_name }}"
+      size: "{{ lv_size }}"
+    register: lv_result
+
+  - name: Create filesystem
+    community.general.filesystem:
+      fstype: ext4
+      dev: "/dev/{{ vg_name }}/{{ lv_name }}"
+    register: fs_result
+
+  - name: Create mount directory
+    ansible.builtin.file:
+      path: "{{ mount_point }}"
+      state: directory
+
+  - name: Mount LV to directory
+    ansible.posix.mount:
+      path: "{{ mount_point }}"
+      src: "/dev/{{ vg_name }}/{{ lv_name }}"
+      fstype: ext4
+      state: mounted
+    register: mn_result
+
+  - name: Show some result
+    ansible.builtin.debug:
+      msg: "Mount point is {{ mount_point }}"
+    tags: Show
+
+  - name: Show result
+    ansible.builtin.debug:
+       msg: |
+        VG: {{ vg_name }} (changed={{ vg_result.changed }})
+        LV: {{ lv_name }} (changed={{ lv_result.changed }})
+        filesystem create: {{ fs_result.changed }}
+  
+
+
