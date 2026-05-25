@@ -1,5 +1,5 @@
 all:
-  childern:
+  children:
     workers:
       hosts:
         kube-worker01:
