@@ -1,0 +1,21 @@
+---
+- name: Add repo
+  hosts: all
+  become: true
+  tasks:
+    - name: Install requirment packages
+      ansible.builtin.apt:
+        name:
+          - gnupg
+          - ca-certificates
+        state: present
+        update_cache: yes
+
+    - name: add debian security repository 
+      ansible.builtin.apt_repository:
+        repo: "{{ item }}"
+        state: present
+      loop:
+        - "deb http://security.debian.org/debian-security trixie-security main non-free-firmware"
+        - "deb-src http://security.debian.org/debian-security trixie-security main non-free-firmware"
+
